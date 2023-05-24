@@ -1,7 +1,6 @@
 import torchvision.transforms as ttf
 from src.factory import *
 from tqdm import tqdm
-import sys
 import torch
 import os
 import argparse
@@ -19,75 +18,61 @@ msls_cities = {
 }
 
 
-class TestParser:
+class TestParser(argparse.ArgumentParser):
     def __init__(self):
-        self.parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-        self.parser.add_argument('--dataset', required=True, default='MSLS',
-                                 help='Name of the dataset [MSLS|7Scenes|TB_Places]')
-
-        self.parser.add_argument('--root_dir', required=True, help='Root directory of the dataset')
-        self.parser.add_argument('--subset', required=False, default='val', help='For MSLS. Subset to test')
-
-        self.parser.add_argument('--query_idx_file', type=str, required=False, help='Query idx file, .json')
-        self.parser.add_argument('--map_idx_file', type=str, required=False, help='Map idx file, .json')
-
-        self.parser.add_argument('--model_file', type=str, required=True, help='Model file, .pth')
-        self.parser.add_argument('--backbone', type=str, default='resnet50',
-                                 help='architectures: [vgg16, resnet18, resnet34, resnet50, resnet152, densenet161]')
-        self.parser.add_argument('--pool', type=str, required=True, help='pool type|avg,max,GeM', default='GeM')
-        self.parser.add_argument('--f_length', type=int, default=2048, help='feature length')
-        self.parser.add_argument('--image_size', type=str, default="480,640", help='Input size, separated by commas')
-        self.parser.add_argument('--norm', type=str, default="L2", help='Normalization descriptors')
-        self.parser.add_argument('--batch_size', type=int, default=16, help='Batch size')
-
-    def parse(self):
-        self.opt = self.parser.parse_args()
+        super().__init__()
+        self.formatter_class = argparse.ArgumentDefaultsHelpFormatter
+        self.add_argument('--dataset', required=True, default='MSLS',
+                          help='Name of the dataset [MSLS|7Scenes|TB_Places]')
+        self.add_argument('--root_dir', required=True, help='Root directory of the dataset')
+        self.add_argument('--subset', required=False, default='val', help='For MSLS. Subset to test')
+        self.add_argument('--query_idx_file', type=str, required=False, help='Query idx file, .json')
+        self.add_argument('--map_idx_file', type=str, required=False, help='Map idx file, .json')
+        self.add_argument('--model_file', type=str, required=True, help='Model file, .pth')
+        self.add_argument('--backbone', type=str, default='resnet50',
+                          help='which architecture to use. [resnet18, resnet34, resnet50, resnet152, densenet161]')
+        self.add_argument('--pool', type=str, required=True, help='pool type', default='avg')
+        self.add_argument('--f_length', type=int, default=2048, help='feature length')
+        self.add_argument('--image_size', type=str, default="480,640", help='Input size, separated by commas')
+        self.add_argument('--norm', type=str, default="L2", help='Normalization descriptors')
+        self.add_argument('--batch_size', type=int, default=16, help='Batch size')
 
 
-def extract_features(dl, net, f_length, feats_file):
-    if not os.path.exists(feats_file):
-        feats = np.zeros((len(dl.dataset), f_length))
-        for i, batch in tqdm(enumerate(dl), desc="Extracting features"):
-            if torch.cuda.is_available():
-                x = net.forward(batch.cuda())
-            else:
-                x = net.forward(batch)
-            feats[i * dl.batch_size:i * dl.batch_size + dl.batch_size] = x.cpu().detach().squeeze(0)
-
-        np.save(feats_file, feats)
+def extract_features(dataloader, network, feature_length, features_file):
+    if not os.path.exists(features_file):
+        feats = np.zeros((len(dataloader.dataset), feature_length))
+        for i, batch in tqdm(enumerate(dataloader), desc="Extracting features"):
+            x = network.forward(batch.cuda())
+            feats[i * dataloader.batch_size:i * dataloader.batch_size + dataloader.batch_size] = x.cpu().detach().squeeze(0)
+        np.save(features_file, feats)
     else:
-        print(feats_file, "already exists. Skipping.")
+        print(features_file, "already exists. Skipping.")
 
 
-def extract_features_msls(subset, root_dir, net, f_length, image_t, savename, results_dir,
-                          batch_size, k, cls_token=False):
+def extract_features_msls(subset, root_dir, net, f_length, image_t, save_name, results_dir, batch_size, k, class_token=False):
     cities = default_cities[subset]
 
-    result_file = results_dir + "/" + savename + "_predictions.txt"
+    result_file = results_dir + "/" + save_name + "_predictions.txt"
     f = open(result_file, "w+")
     f.close()
 
     subset_dir = subset if subset == "test" else "train_val"
-    for c in cities:
-        print(c)
-        m_raw_file = root_dir + subset_dir + "/" + c + "/database/raw.csv"
-        q_idx_file = root_dir + subset_dir + "/" + c + "/query.json"
-        m_idx_file = root_dir + subset_dir + "/" + c + "/database.json"
-        q_dl = create_dataloader("test", root_dir, q_idx_file, None, image_t, batch_size)
-        q_feats_file = results_dir + "/" + savename + "_" + c + "_queryfeats.npy"
-        if cls_token:
-            q_feats_cls_file = results_dir + "/" + savename + "_" + c + "_queryfeats_cls.npy"
-            extract_features(q_dl, net, f_length, q_feats_file, q_feats_cls_file)
-        else:
-            extract_features(q_dl, net, f_length, q_feats_file)
-        m_dl = create_dataloader("test", root_dir, m_idx_file, None, image_t, batch_size)
-        m_feats_file = results_dir + "/" + savename + "_" + c + "_mapfeats.npy"
-        if cls_token:
-            m_feats_cls_file = results_dir + "/" + savename + "_" + c + "_mapfeats_cls.npy"
-            extract_features(m_dl, net, f_length, m_feats_file, m_feats_cls_file)
-        else:
-            extract_features(m_dl, net, f_length, m_feats_file)
-        result_file = extract_msls_top_k(m_feats_file, q_feats_file, m_idx_file, q_idx_file, result_file, k, m_raw_file)
+    for city in cities:
+        print(city)
+        query_index_file = root_dir + subset_dir + "/" + city + "/query.json"
+        query_dataloader = create_dataloader("test", root_dir, query_index_file, None, image_t, batch_size)
+        query_features_file = results_dir + "/" + save_name + "_" + city + "_queryfeats.npy"
+        if class_token: extract_features(query_dataloader, net, f_length, query_features_file)
+        else: extract_features(query_dataloader, net, f_length, query_features_file)
+
+        map_index_file = root_dir + subset_dir + "/" + city + "/database.json"
+        map_dataloader = create_dataloader("test", root_dir, map_index_file, None, image_t, batch_size)
+        map_features_file = results_dir + "/" + save_name + "_" + city + "_mapfeats.npy"
+        if class_token: extract_features(map_dataloader, net, f_length, map_features_file)
+        else: extract_features(map_dataloader, net, f_length, map_features_file)
+
+        result_file = extract_msls_top_k(map_features_file, query_features_file, map_index_file, query_index_file, result_file, k)
+
     if subset == "val":
         print(result_file)
         score_file = result_file.replace("_predictions", "_result")
@@ -96,16 +81,16 @@ def extract_features_msls(subset, root_dir, net, f_length, image_t, savename, re
 
 
 def load_index(index):
-    with open(index) as f:
-        data = json.load(f)
-    im_paths = np.array(data["im_paths"])
-    im_prefix = data["im_prefix"]
+    with open(index) as file:
+        data = json.load(file)
+    image_paths = np.array(data["im_paths"])
+    image_prefix = data["im_prefix"]
 
     if "poses" in data.keys():
         poses = np.array(data["poses"])
-        return im_paths, poses, im_prefix
+        return image_paths, poses, image_prefix
     else:
-        return im_paths, im_prefix
+        return image_paths, image_prefix
 
 
 def world_to_camera(pose):
@@ -115,50 +100,57 @@ def world_to_camera(pose):
     qx, qy, qz, qw = R.from_matrix(r).as_quat()
     return qw, qx, qy, qz, tx, ty, tz
 
-def predict_poses_cmu(root_dir, m_feats_file, q_feats_file):
-    ref_impaths, ref_poses, ref_impref = load_index(root_dir + "reference.json")
-    test_impaths, test_impref = load_index(root_dir + "test.json")
-    name = "ExtendedCMU" if "extended" in m_feats_file else "CMU"
-    D, I = search(m_feats_file, q_feats_file, 1)
-    name = m_feats_file.replace("_mapfeats", "_toeval").replace("/MSLS_", "/" + name + "_eval_MSLS_").replace(".npy",
-                                                                                                              ".txt")
+
+def predict_poses_cmu(root_dir, map_features_file, query_features_file):
+    _, reference_poses, _ = load_index(root_dir + "reference.json")
+    test_images, _ = load_index(root_dir + "test.json")
+    _, best_score = search(map_features_file, query_features_file, 1)
+
+    name = "ExtendedCMU" if "extended" in map_features_file else "CMU"
+    name = map_features_file \
+        .replace("_mapfeats", "_toeval") \
+        .replace("/MSLS_", "/" + name + "_eval_MSLS_") \
+        .replace(".npy", ".txt")
+
     with open(name, "w") as f:
-        for q, db_index in tqdm(zip(test_impaths, I), desc="Predicting poses..."):
+        for q, db_index in tqdm(zip(test_images, best_score), desc="Predicting poses..."):
             cut_place = q.find("/img")
-            q_im_tosubmit = q[cut_place + 1:]
-            pose = np.array((ref_poses[db_index])).flatten()
-            submission = q_im_tosubmit + " " + " ".join(pose.astype(str)) + "\n"
+            query_image_to_submit = q[cut_place + 1:]
+            pose = np.array((reference_poses[db_index])).flatten()
+            submission = query_image_to_submit + " " + " ".join(pose.astype(str)) + "\n"
             f.write(submission)
 
 
-def predict_poses(root_dir, m_feats_file, q_feats_file):
-    ref_impaths, ref_poses, ref_impref = load_index(root_dir + "reference.json")
-    test_impaths, test_impref = load_index(root_dir + "test.json")
+def predict_poses(root_dir, map_features_file, query_features_file):
+    _, reference_poses, _ = load_index(root_dir + "reference.json")
+    test_images, _ = load_index(root_dir + "test.json")
+    _, best_score = search(map_features_file, query_features_file, 1)
 
-    D, best_score = search(m_feats_file, q_feats_file, 1)
+    name = map_features_file \
+        .replace("_mapfeats", "_toeval") \
+        .replace("/MSLS_", "/RobotCar_eval_MSLS_") \
+        .replace(".npy", ".txt")
 
-    name = m_feats_file.replace("_mapfeats", "_toeval").replace("/MSLS_", "/RobotCar_eval_MSLS_").replace(".npy",
-                                                                                                          ".txt")
-    with open(name, "w") as f:
-        for q_im, db_index in tqdm(zip(test_impaths, best_score), desc="Predicting poses..."):
-            cut_place = q_im.find("/rear")
-            q_im_tosubmit = q_im[cut_place + 1:]
-            assert q_im_tosubmit.startswith("rear/")
-            pose = np.array(world_to_camera(ref_poses[db_index].flatten()))
-            submission = q_im_tosubmit + " " + " ".join(pose.astype(str)) + "\n"
-            f.write(submission)
+    with open(name, "w") as file:
+        for query_image, database_index in tqdm(zip(test_images, best_score), desc="Predicting poses..."):
+            cut_place = query_image.find("/rear")
+            query_image_to_submit = query_image[cut_place + 1:]
+            assert query_image_to_submit.startswith("rear/")
+            pose = np.array(world_to_camera(reference_poses[database_index].flatten()))
+            submission = query_image_to_submit + " " + " ".join(pose.astype(str)) + "\n"
+            file.write(submission)
 
 
-def eval_pitts(root_dir, ds, result_file):
-    if "pitts" in ds:
-        gt_file = root_dir + ds + "_test_gt.h5"
-    elif ds.lower() == "tokyotm":
+def eval_pitts(root_dir, dataset, result_file):
+    if "pitts" in dataset:
+        gt_file = root_dir + dataset + "_test_gt.h5"
+    elif dataset.lower() == "tokyotm":
         gt_file = root_dir + "val_gt.h5"
     else:
         gt_file = root_dir + "gt.h5"
-    ret_idx = np.load(result_file)
+    results_index = np.load(result_file)
     score_file = result_file.replace("predictions.npy", "scores.txt")
-    print(ret_idx.shape)
+    print(results_index.shape)
     ks = [1, 2, 3, 4, 5, 10, 15, 20, 25]
     with open(score_file, "w") as sf:
         with h5py.File(gt_file, "r") as f:
@@ -167,149 +159,147 @@ def eval_pitts(root_dir, ds, result_file):
             for k in ks:
                 hits = 0
                 total = 0
-                for q_idx, ret in enumerate(ret_idx):
-                    if np.any(gt[q_idx, :]):
+                for query_index, ret in enumerate(results_index):
+                    if np.any(gt[query_index, :]):
                         total += 1
-                        db_idx = sorted(ret[:k])
-                        hits += np.any(gt[q_idx, db_idx])
+                        database_index = sorted(ret[:k])
+                        hits += np.any(gt[query_index, database_index])
                 print(k, np.round(hits / total * 100, 2))
                 sf.write(str(k) + "," + str(np.round(hits / total * 100, 2)) + "\n")
 
 
-def extract_features_map_query(root_dir, q_idx_file, m_idx_file, net, f_length, savename, results_dir, batch_size, k,
-                               ds):
-    q_dl = create_dataloader("test", root_dir, q_idx_file, None, image_t, batch_size)
-    q_feats_file = results_dir + "/" + savename + "_queryfeats.npy"
-    extract_features(q_dl, net, f_length, q_feats_file)
-    m_dl = create_dataloader("test", root_dir, m_idx_file, None, image_t, batch_size)
-    m_feats_file = results_dir + "/" + savename + "_mapfeats.npy"
-    extract_features(m_dl, net, f_length, m_feats_file)
-    result_file = results_dir + "/" + savename + "_predictions.npy"
-    if ds.lower() == "tokyotm":
-        extract_top_k_tokyotm(m_feats_file, q_feats_file, m_idx_file, q_idx_file, result_file, k)
+def extract_features_map_query(root_dir, query_index_file, map_index_file, network, feature_length, save_name, results_dir, batch_size, k, dataset):
+    query_dataloader = create_dataloader("test", root_dir, query_index_file, None, transformer, batch_size)
+    query_features_file = results_dir + "/" + save_name + "_queryfeats.npy"
+    extract_features(query_dataloader, network, feature_length, query_features_file)
+
+    map_dataloader = create_dataloader("test", root_dir, map_index_file, None, transformer, batch_size)
+    map_features_file = results_dir + "/" + save_name + "_mapfeats.npy"
+    extract_features(map_dataloader, network, feature_length, map_features_file)
+
+    result_file = results_dir + "/" + save_name + "_predictions.npy"
+
+    if dataset.lower() == "tokyotm":
+        extract_top_k_tokyotm(map_features_file, query_features_file, map_index_file, query_index_file, result_file, k)
     else:
-        extract_top_k(m_feats_file, q_feats_file, result_file, k)
-    if ds == "robotcarseasons":
-        predict_poses(root_dir, m_feats_file, q_feats_file)
-    elif ds == "extendedcmu" or ds == "cmu":
-        predict_poses_cmu(root_dir, m_feats_file, q_feats_file)
-    elif "pitts" in ds or "tokyo" in ds:
-        eval_pitts(root_dir, ds, result_file)
+        extract_top_k(map_features_file, query_features_file, result_file, k)
+    if dataset == "robotcarseasons":
+        predict_poses(root_dir, map_features_file, query_features_file)
+    elif dataset == "extendedcmu" or dataset == "cmu":
+        predict_poses_cmu(root_dir, map_features_file, query_features_file)
+    elif "pitts" in dataset or "tokyo" in dataset:
+        eval_pitts(root_dir, dataset, result_file)
 
 
-def extract_top_k_tokyotm(m_feats_file, q_feats_file, db_idx_file, q_idx_file, result_idx_file, k):
+def extract_top_k_tokyotm(map_features_file, query_features_file, database_index_file, query_index_file, result_index_file, k):
     print("TokyoTM")
-    D, best_score = search(m_feats_file, q_feats_file)
-    with open(db_idx_file, "r") as f:
+    D, best_score = search(map_features_file, query_features_file)
+    with open(database_index_file, "r") as f:
         db_paths = np.array(json.load(f)["im_paths"])
-    with open(q_idx_file, "r") as f:
-        q_paths = np.array(json.load(f)["im_paths"])
-    result_idx = np.zeros((len(q_paths), k))
-    for i, q in enumerate(q_paths):
-        q_timestamp = int(q.split("/")[3][1:])
+    with open(query_index_file, "r") as f:
+        query_paths = np.array(json.load(f)["im_paths"])
+    result_idx = np.zeros((len(query_paths), k))
+    for index, query in enumerate(query_paths):
+        query_timestamp = int(query.split("/")[3][1:])
         aux = 0
         for t in range(k):
-            idx = best_score[i, aux]
-            db = db_paths[idx]
-            db_timestamp = int(db.split("/")[3][1:])
+            score = best_score[index, aux]
+            database = db_paths[score]
+            database_timestamp = int(database.split("/")[3][1:])
 
-            while (np.abs(q_timestamp - db_timestamp) < 1):  # ensure we retrieve something at least a month away
+            # ensure we retrieve something at least a month away
+            while np.abs(query_timestamp - database_timestamp) < 1:
                 aux += 1
-                idx = best_score[i, aux]
-                db = db_paths[idx]
-                db_timestamp = int(db.split("/")[3][1:])
-            result_idx[i, t] = best_score[i, aux]
+                score = best_score[index, aux]
+                database = db_paths[score]
+                database_timestamp = int(database.split("/")[3][1:])
+            result_idx[index, t] = best_score[index, aux]
             aux += 1
 
-    np.save(result_idx_file, result_idx.astype(int))
+    np.save(result_index_file, result_idx.astype(int))
 
 
-def extract_msls_top_k(map_feats_file, query_feats_file, db_idx_file, q_idx_file, result_file, k, m_raw_file=""):
+def extract_msls_top_k(map_feats_file, query_feats_file, database_index_file, query_index_file, result_file, k):
     D, I = search(map_feats_file, query_feats_file, k)
 
     # load indices
-    with open(db_idx_file, "r") as f:
-        db_paths = np.array(json.load(f)["im_paths"])
-    with open(q_idx_file, "r") as f:
-        q_paths = np.array(json.load(f)["im_paths"])
-    with open(result_file, "a+") as f:
-        for i, q in enumerate(q_paths):
-            q_id = q.split("/")[-1].split(".")[0]
-            f.write(q_id + " " + " ".join([db_paths[j].split("/")[-1].split(".")[0] for j in I[i, :]]) + "\n")
+    with open(database_index_file, "r") as file:
+        db_paths = np.array(json.load(file)["im_paths"])
+    with open(query_index_file, "r") as file:
+        q_paths = np.array(json.load(file)["im_paths"])
+    with open(result_file, "a+") as file:
+        for i, query in enumerate(q_paths):
+            query_id = query.split("/")[-1].split(".")[0]
+            file.write(query_id + " " + " ".join([db_paths[j].split("/")[-1].split(".")[0] for j in I[i, :]]) + "\n")
     return result_file
 
 
 def search(map_feats_file, query_feats_file, k=25):
     # load features
-    query_feats = np.load(query_feats_file).astype('float32')
-    map_feats = np.load(map_feats_file).astype('float32')
+    query_features = np.load(query_feats_file).astype('float32')
+    map_features = np.load(map_feats_file).astype('float32')
     if k is None:
-        k = map_feats.shape[0]
+        k = map_features.shape[0]
     # build index and add map features
-    index = faiss.IndexFlatL2(map_feats.shape[1])
-    index.add(map_feats)
+    index = faiss.IndexFlatL2(map_features.shape[1])
+    index.add(map_features)
     # search top K
-    D, I = index.search(query_feats.astype('float32'), k)
+    D, I = index.search(query_features.astype('float32'), k)
     return D, I
 
 
 def extract_top_k(map_feats_file, query_feats_file, result_file, k):
-    D, I = search(map_feats_file, query_feats_file, k, m)
+    D, I = search(map_feats_file, query_feats_file, k)
     np.save(result_file, I)
 
 
+def image_transformer(image_size):
+    if len(image_size) == 2:
+        print("testing with images of size", image_size[0], image_size[1])
+        return ttf.Compose([
+            ttf.Resize(size=(image_size[0], image_size[1])),
+            ttf.ToTensor(),
+            ttf.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
+    else:
+        print("testing with images of size", image_size[0])
+        return ttf.Compose([
+            ttf.Resize(size=image_size[0]),
+            ttf.ToTensor(),
+            ttf.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
+
+
 if __name__ == "__main__":
-    p = TestParser()
-    p.parse()
-    params = p.opt
-    print(params)
+    parser = TestParser()
+    params = parser.parse_args()
+
     # Create model and load weights
     pool = params.pool
     test_net = create_model(params.backbone, pool, norm=params.norm, mode="single")
-    try:
-        if torch.cuda.is_available():
-            test_net.load_state_dict(torch.load(params.model_file)["model_state_dict"])
-        else:
-            test_net.load_state_dict(
-                torch.load(params.model_file, map_location=torch.device('cpu'))["model_state_dict"])
-    except:
-        if torch.cuda.is_available():
-            test_net.load_state_dict(torch.load(params.model_file)["state_dict"])
-        else:
-            test_net.load_state_dict(torch.load(params.model_file, map_location=torch.device('cpu'))["state_dict"])
-    # try:
-    #    test_net.load_state_dict(torch.load(params.model_file)["model_state_dict"])
-    # except:
-    #    test_net.load_state_dict(torch.load(params.model_file)["state_dict"])
-    if torch.cuda.is_available():
-        test_net.cuda()
+    try: test_net.load_state_dict(torch.load(params.model_file)["model_state_dict"])
+    finally: test_net.load_state_dict(torch.load(params.model_file)["state_dict"])
+
+    # Evaluate model
+    if torch.cuda.is_available(): test_net.cuda()
     test_net.eval()
 
     # Create the datasets
-    image_size = [int(x) for x in (params.image_size).split(",")]
-    if len(image_size) == 2:
-        print("testing with images of size", image_size[0], image_size[1])
-        image_t = ttf.Compose([ttf.Resize(size=(image_size[0], image_size[1])),
-                               ttf.ToTensor(),
-                               ttf.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-                               ])
-    else:
-        print("testing with images of size", image_size[0])
-        image_t = ttf.Compose([ttf.Resize(size=image_size[0]),
-                               ttf.ToTensor(),
-                               ttf.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-                               ])
-
-    f_length = int(params.f_length)
+    image_size = [int(x) for x in params.image_size.split(",")]
+    transformer = image_transformer(image_size)
+    feature_length = int(params.f_length)
 
     results_dir = "results/" + params.dataset + "/" + params.subset + "/"
     if not os.path.exists(results_dir):
         os.makedirs(results_dir)
-    savename = params.model_file.split("/")[-1].split(".")[0]
-    print(savename)
+
+    save_name = params.model_file.split("/")[-1].split(".")[0]
+    print(save_name)
+
     if params.dataset.lower() == "msls":
-        extract_features_msls(params.subset, params.root_dir, test_net, f_length, image_t, savename, results_dir,
-                              params.batch_size, 30)
+        extract_features_msls(params.subset, params.root_dir, test_net, feature_length, transformer, save_name,
+                              results_dir, params.batch_size, 30)
     else:
-        extract_features_map_query(params.root_dir, params.query_idx_file, params.map_idx_file, test_net, f_length,
-                                   savename, results_dir, params.batch_size, 30, params.dataset.lower())
+        extract_features_map_query(params.root_dir, params.query_idx_file, params.map_idx_file, test_net,
+                                   feature_length, save_name, results_dir, params.batch_size, 30,
+                                   params.dataset.lower())
