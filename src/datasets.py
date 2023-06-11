@@ -13,6 +13,7 @@ default_cities = {
     'train': ["trondheim", "london", "boston", "melbourne", "amsterdam", "helsinki",
               "tokyo", "toronto", "saopaulo", "moscow", "zurich", "paris", "bangkok",
               "budapest", "austin", "berlin", "ottawa", "phoenix", "goa", "amman", "nairobi", "manila"],
+    'acvpr': ["amman", "boston", "cph", "london", "manila", "sf", "zurich"],
     'toy': ["amman"],
     'val': ["cph", "sf"],
     'test': ["miami", "athens", "buenosaires", "stockholm", "bengaluru", "kampala"]
