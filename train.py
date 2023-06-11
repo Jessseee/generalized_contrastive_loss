@@ -35,7 +35,7 @@ class TrainParser(argparse.ArgumentParser):
         self.add_argument('--learning_rate', type=float, default='.1', help='learning rate')
         self.add_argument('--lr_gamma', type=float, default='.1', help='learning rate decay')
         self.add_argument('--step_size', type=float, default='25', help='Learning rate update frequency (in steps)')
-        self.add_argument('--use_cpu', type=bool, dest='use_gpu', help='Use CPU mode', action='store_false')
+        self.add_argument('--use_cpu', dest='use_gpu', help='Use CPU mode', action='store_false')
         self.set_defaults(use_gpu=True)
 
 
