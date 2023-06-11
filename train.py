@@ -47,42 +47,43 @@ def extract_features(dataloader, network, feature_length, features_file):
     np.save(features_file, feats)
 
 
-def validate(params, model, image_t, best_metric, reference_metric="recall@5"):
+def validate(root_dir, result_dir, snapshot_dir, model, transformer, best_metric, reference_metric="recall@5"):
     print("Validating...")
     val_cities = ["cph", "sf"]
-    save_dir = params.result_dir
-    os.makedirs(save_dir, exist_ok=True)
+    os.makedirs(result_dir, exist_ok=True)
+    os.makedirs(snapshot_dir, exist_ok=True)
     is_best = False
     model.eval()
-    retrieved_file = save_dir + "/" + params.name + "_retrieved.csv"
+    name = params.name
+    retrieved_file = result_dir + "/" + name + "_retrieved.csv"
 
     for city in val_cities:
         print(city)
 
-        query_index_file = params.root_dir + "train_val/" + city + "/query.json"
-        query_dataloader = create_dataloader("test", params.root_dir, query_index_file, None, image_t, 2)
+        query_index_file = root_dir + "train_val/" + city + "/query.json"
+        query_dataloader = create_dataloader("test", root_dir, query_index_file, None, transformer, 2)
 
-        map_index_file = params.root_dir + "train_val/" + city + "/database.json"
-        map_dataloader = create_dataloader("test", params.root_dir, map_index_file, None, image_t, 2)
+        map_index_file = root_dir + "train_val/" + city + "/database.json"
+        map_dataloader = create_dataloader("test", root_dir, map_index_file, None, transformer, 2)
 
-        query_features_file = save_dir + "/" + params.name + "_" + city + "_query_features.npy"
+        query_features_file = result_dir + "/" + name + "_" + city + "_query_features.npy"
         extract_features(query_dataloader, model, model.feature_length, query_features_file)
 
-        map_features_file = save_dir + "/" + params.name + "_" + city + "_database_features.npy"
+        map_features_file = result_dir + "/" + name + "_" + city + "_database_features.npy"
         extract_features(map_dataloader, model, model.feature_length, map_features_file)
 
         extract_msls_top_k(map_features_file, query_features_file, map_index_file, query_index_file, retrieved_file, 25)
 
-    results_file = save_dir + "/" + params.name + "_val_results.txt"
-    metrics = msls_validate(retrieved_file, params.root_dir, results_file)
+    results_file = result_dir + "/" + name + "_val_results.txt"
+    metrics = msls_validate(retrieved_file, root_dir, results_file)
 
     if metrics[reference_metric] > best_metric:
         shutil.copy(retrieved_file, retrieved_file.replace(".csv", "_best.csv"))
         shutil.copy(results_file, results_file.replace(".txt", "_best.txt"))
         for city in val_cities:
-            query_features_file = save_dir + "/" + params.name + "_" + city + "_query_features.npy"
+            query_features_file = result_dir + "/" + name + "_" + city + "_query_features.npy"
             shutil.copy(query_features_file, query_features_file.replace(".npy", "_best.npy"))
-            map_features_file = save_dir + "/" + params.name + "_" + city + "_database_features.npy"
+            map_features_file = result_dir + "/" + name + "_" + city + "_database_features.npy"
             shutil.copy(map_features_file, map_features_file.replace(".npy", "_best.npy"))
         is_best = True
     model.train()
@@ -164,7 +165,8 @@ def train(params):
             optimizer.step()
             optimizer.zero_grad()
 
-        metrics, is_best = validate(params, model, transformer, best_metric, reference_metric=ref_metric)
+        metrics, is_best = validate(params.root_dir, params.result_dir, params.snapshot_dir, model,
+                                    transformer, best_metric, ref_metric)
 
         if step % params.save_freq == 0:
             save_path = params.snapshot_dir + "/" + params.name + ".pth"

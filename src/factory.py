@@ -76,14 +76,16 @@ def create_model(name, pool, last_layer=None, norm=None, p_gem=3, mode="siamese"
     elif "vgg" in name:
         last_layer = last_layer * 8 - 2
 
+    print(f"\n{name.upper()} LAYERS:")
+
     aux = 0
     for layer in backbone.children():
         if aux < layers - last_layer:
-            print(aux, layer._get_name(), "IS FROZEN")
+            print(f"{aux:02d} {layer._get_name():<9} FROZEN")
             for p in layer.parameters():
                 p.requires_grad = False
         else:
-            print(aux, layer._get_name(), "IS TRAINED")
+            print(f"{aux:02d} {layer._get_name():<9} TRAINING")
         aux += 1
 
     if mode == "siamese":
