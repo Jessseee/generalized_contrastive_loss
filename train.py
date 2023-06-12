@@ -55,35 +55,35 @@ def validate(root_dir, result_dir, snapshot_dir, model, transformer, best_metric
     is_best = False
     model.eval()
     name = params.name
-    retrieved_file = result_dir + "/" + name + "_retrieved.csv"
+    retrieved_file = os.path.join(result_dir, f"{name}_retrieved.csv")
 
     for city in val_cities:
         print(city)
 
-        query_index_file = root_dir + "train_val/" + city + "/query.json"
+        query_index_file = os.path.join(root_dir, "train_val", city, "query.json")
         query_dataloader = create_dataloader("test", root_dir, query_index_file, None, transformer, 2)
 
-        map_index_file = root_dir + "train_val/" + city + "/database.json"
+        map_index_file = os.path.join(root_dir, "train_val", city, "database.json")
         map_dataloader = create_dataloader("test", root_dir, map_index_file, None, transformer, 2)
 
-        query_features_file = result_dir + "/" + name + "_" + city + "_query_features.npy"
+        query_features_file = os.path.join(result_dir, f"{name}_{city}_query_features.npy")
         extract_features(query_dataloader, model, model.feature_length, query_features_file)
 
-        map_features_file = result_dir + "/" + name + "_" + city + "_database_features.npy"
+        map_features_file = os.path.join(result_dir, f"{name}_{city}_database_features.npy")
         extract_features(map_dataloader, model, model.feature_length, map_features_file)
 
         extract_msls_top_k(map_features_file, query_features_file, map_index_file, query_index_file, retrieved_file, 25)
 
-    results_file = result_dir + "/" + name + "_val_results.txt"
+    results_file = os.path.join(result_dir, f"{name}_val_results.txt")
     metrics = msls_validate(retrieved_file, root_dir, results_file)
 
     if metrics[reference_metric] > best_metric:
         shutil.copy(retrieved_file, retrieved_file.replace(".csv", "_best.csv"))
         shutil.copy(results_file, results_file.replace(".txt", "_best.txt"))
         for city in val_cities:
-            query_features_file = result_dir + "/" + name + "_" + city + "_query_features.npy"
+            query_features_file = os.path.join(result_dir, f"{name}_{city}_query_features.npy")
             shutil.copy(query_features_file, query_features_file.replace(".npy", "_best.npy"))
-            map_features_file = result_dir + "/" + name + "_" + city + "_database_features.npy"
+            map_features_file = os.path.join(result_dir, f"{name}_{city}_database_features.npy")
             shutil.copy(map_features_file, map_features_file.replace(".npy", "_best.npy"))
         is_best = True
     model.train()
@@ -161,7 +161,7 @@ def train(params):
                 total_iterations += mini_batch_size
 
             if i % params.display_freq == 0:
-                print("Step %d, Iteration %d, Loss %.4f, Null loss %.4f" % (step, e_iteration, error, null_losses))
+                print(f"Step {step}, Iteration {e_iteration}, Loss {error:.4f}, Null loss {null_losses:.4f}")
             optimizer.step()
             optimizer.zero_grad()
 
@@ -169,7 +169,7 @@ def train(params):
                                     transformer, best_metric, ref_metric)
 
         if step % params.save_freq == 0:
-            save_path = params.snapshot_dir + "/" + params.name + ".pth"
+            save_path = os.path.join(params.snapshot_dir, f"{params.name}.pth")
             torch.save({
                 'step': step,
                 'model_state_dict': model.state_dict(),
@@ -180,7 +180,7 @@ def train(params):
         if is_best:
             best_metric = metrics[ref_metric]
             best_metrics = metrics
-            save_path = params.snapshot_dir + "/" + params.name + "_best.pth"
+            save_path = os.path.join(params.snapshot_dir, f"{params.name}_best.pth")
             torch.save({
                 'step': step,
                 'model_state_dict': model.state_dict(),

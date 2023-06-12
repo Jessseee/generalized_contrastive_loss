@@ -70,26 +70,26 @@ def map_query_pca_whiten_learn(params):
 def map_query_whiten_apply(dataset, name, root_dir, subset, map_feats_file, query_feats_file, m, P, map_index_file="",
                            query_index_file="", m_raw_file="", dimensions=None):
     dimensions = dimensions or [2048, 1024, 512, 256, 128, 64, 32]
-    features_dir = "results/" + dataset + "/" + subset + "/"
+    features_dir = os.path.join("results", dataset, subset)
     if not os.path.exists(features_dir):
         os.makedirs(features_dir)
     database = np.load(map_feats_file).astype(np.float16).T
     query = np.load(query_feats_file).astype(np.float16).T
-    for d in tqdm(dimensions, desc="Applying PCA whitening..."):
-        query_whiten_file = query_feats_file.replace(".npy", "_whiten_" + str(d) + ".npy")
+    for dim in tqdm(dimensions, desc="Applying PCA whitening..."):
+        query_whiten_file = query_feats_file.replace(".npy", f"_whiten_{dim}.npy")
         if not os.path.exists(query_whiten_file):
             print("Getting query features...")
-            query_whiten = whiten_apply(query, m, P, dimensions=d).T
+            query_whiten = whiten_apply(query, m, P, dimensions=dim).T
             query_whiten = query_whiten.copy(order='C')
             np.save(query_whiten_file, query_whiten)
         else:
             print("Loading query features...")
             query_whiten = np.load(query_whiten_file)
 
-        database_whiten_file = map_feats_file.replace(".npy", "_whiten_" + str(d) + ".npy")
+        database_whiten_file = map_feats_file.replace(".npy", f"_whiten_{dim}.npy")
         if not os.path.exists(database_whiten_file):
             print("Getting map features...")
-            database_whiten = whiten_apply(database, m, P, dimensions=d).T
+            database_whiten = whiten_apply(database, m, P, dimensions=dim).T
             database_whiten = database_whiten.copy(order='C')
             np.save(database_whiten_file, database_whiten)
         else:
@@ -106,28 +106,28 @@ def map_query_whiten_apply(dataset, name, root_dir, subset, map_feats_file, quer
             eval_pitts(root_dir, dataset, result_file)
         elif dataset.lower() == "tokyotm":
             result_file = database_whiten_file.replace("_mapfeats", "").replace(".npy", "_predictions.npy")
-            map_index_file = root_dir + "val_db.json"
-            query_index_file = root_dir + "val_q.json"
+            map_index_file = os.path.join(root_dir, "val_db.json")
+            query_index_file = os.path.join(root_dir, "val_q.json")
             extract_top_k_tokyotm(database_whiten_file, query_whiten_file, map_index_file, query_index_file, result_file, 50)
             eval_pitts(root_dir, dataset, result_file)
         elif dataset.lower() == "msls":
-            result_file = features_dir + name + "_retrieved_whiten_" + str(d) + ".csv"
+            result_file = os.path.join(features_dir, f"{name}_retrieved_whiten_{dim}.csv")
             extract_msls_top_k(database_whiten_file, query_whiten_file, map_index_file, query_index_file, result_file, 50)
 
 
 def map_query_whiten_apply_from_file(dataset, name, root_dir, subset, dim, map_feats_file, query_feats_file,
                                      checkpoint_file, m_idx_file="", q_idx_file="", m_raw_file=""):
-    checkpoint = torch.load(checkpoint_file + str(dim) + ".pth")
+    checkpoint = torch.load(f"{checkpoint_file}{dim}.pth")
     assert dim == checkpoint["num_pcs"]
     pca_conv = torch.nn.Conv2d(32768, dim, kernel_size=(1, 1), stride=1, padding=0)
     pca_conv.weight = torch.nn.Parameter(checkpoint["state_dict"]["WPCA.0.weight"].to(torch.float32))
     pca_conv.bias = torch.nn.Parameter(checkpoint["state_dict"]["WPCA.0.bias"].to(torch.float32))
-    features_dir = "results/" + dataset + "/" + subset + "/"
+    features_dir = os.path.join("results", dataset, subset)
     if not os.path.exists(features_dir):
         os.makedirs(features_dir)
     with torch.no_grad():
         b_size = 1024
-        q_whiten_file = query_feats_file.replace(".npy", "_whiten_" + str(dim) + ".npy")
+        q_whiten_file = query_feats_file.replace(".npy", f"_whiten_{dim}.npy")
         if not os.path.exists(q_whiten_file):
             print("Getting query features...")
             aux = 0
@@ -142,7 +142,7 @@ def map_query_whiten_apply_from_file(dataset, name, root_dir, subset, dim, map_f
         else:
             print(q_whiten_file, "already exists. Skipping...")
 
-        db_whiten_file = map_feats_file.replace(".npy", "_whiten_" + str(dim) + ".npy")
+        db_whiten_file = map_feats_file.replace(".npy", f"_whiten_{dim}.npy")
         if not os.path.exists(db_whiten_file):
             print("Getting map features...")
             db = torch.Tensor(np.load(map_feats_file))
@@ -166,78 +166,75 @@ def map_query_whiten_apply_from_file(dataset, name, root_dir, subset, dim, map_f
         eval_pitts(root_dir, dataset, result_file)
     elif dataset.lower() == "tokyotm":
         result_file = db_whiten_file.replace("_mapfeats", "").replace(".npy", "_predictions.npy")
-        m_idx_file = root_dir + "val_db.json"
-        q_idx_file = root_dir + "val_q.json"
+        m_idx_file = os.path.join(root_dir, "val_db.json")
+        q_idx_file = os.path.join(root_dir, "val_q.json")
         extract_top_k_tokyotm(db_whiten_file, q_whiten_file, m_idx_file, q_idx_file, result_file, 50)
         eval_pitts(root_dir, dataset, result_file)
     elif dataset.lower() == "msls":
-        result_file = features_dir + name + "_retrieved_whiten_" + str(dim) + ".csv"
-        extract_msls_top_k(db_whiten_file, q_whiten_file, m_idx_file, q_idx_file, result_file, 50, m_raw_file)
+        result_file = os.path.join(features_dir, f"{name}_retrieved_whiten_{dim}.csv")
+        extract_msls_top_k(db_whiten_file, q_whiten_file, m_idx_file, q_idx_file, result_file, 50)
 
 
-def msls_pca_whiten_learn(params):
-    features_dir = "results/" + params.dataset + "/" + params.subset + "/"
-    cities = msls_cities[params.subset]
+def msls_pca_whiten_learn(dataset, subset, name):
+    features_dir = os.path.join("results", dataset, subset)
+    cities = msls_cities[subset]
     db = []
     for city in cities:
-        db_file = features_dir + params.name + "_" + city + "_mapfeats.npy"
+        db_file = os.path.join(features_dir, f"{name}_{city}_mapfeats.npy")
         db.append(np.load(db_file).T)
     db = np.hstack(db)
     return pca_whiten_learn(db)
 
 
-def msls_whiten_apply_from_file(params):
-    cities = msls_cities[params.subset]
-    features_dir = "results/" + params.dataset + "/" + params.subset + "/"
+def msls_whiten_apply_from_file(root_dir, dataset, subset, name, dim, checkpoint):
+    cities = msls_cities[subset]
+    features_dir = os.path.join("results", dataset, subset)
     if not os.path.exists(features_dir):
         os.makedirs(features_dir)
-    d = params.dim
-    result_file = features_dir + params.name + "_retrieved_whiten_" + str(d) + ".csv"
+    result_file = os.path.join(features_dir, f"{name}_retrieved_whiten_{dim}.csv")
     f = open(result_file, "w+")
     f.close()
-    for c in tqdm(cities):
-        database_file = features_dir + params.name + "_" + c + "_mapfeats.npy"
-        query_file = features_dir + params.name + "_" + c + "_queryfeats.npy"
-        database_folder = params.subset if params.subset == "test" else "train_val"
-        query_index_file = params.root_dir + database_folder + "/" + c + "/query.json"
-        map_index_file = params.root_dir + database_folder + "/" + c + "/database.json"
-        map_raw_file = params.root_dir + database_folder + "/" + c + "/database/raw.csv"
-        query_raw_file = params.root_dir + database_folder + "/" + c + "/query/raw.csv"
+    for city in tqdm(cities):
+        database_file = os.path.join(features_dir, f"{name}_{city}_mapfeats.npy")
+        query_file = os.path.join(features_dir, f"{name}_{city}_queryfeats.npy")
+        database_folder = subset if subset == "test" else "train_val"
+        query_index_file = os.path.join(root_dir, database_folder, city, "query.json")
+        map_index_file = os.path.join(root_dir, database_folder, city, "database.json")
+        map_raw_file = os.path.join(root_dir, database_folder, city, "database", "raw.csv")
 
-        map_query_whiten_apply_from_file(params.dataset, params.name, params.root_dir, params.subset, params.dim,
-                                         database_file, query_file, params.checkpoint, m_idx_file=map_index_file,
+        map_query_whiten_apply_from_file(dataset, name, root_dir, subset, dim,
+                                         database_file, query_file, checkpoint, m_idx_file=map_index_file,
                                          q_idx_file=query_index_file, m_raw_file=map_raw_file)
-    if params.subset == "val":
-        result_file = features_dir + params.name + "_retrieved_whiten_" + str(params.dim) + ".csv"
-        validate(result_file, params.root_dir, result_file.replace("retrieved", "result").replace(".csv", ".txt"))
+    if subset == "val":
+        result_file = os.path.join(features_dir, f"{name}_retrieved_whiten_{dim}.csv")
+        validate(result_file, root_dir, result_file.replace("retrieved", "result").replace(".csv", ".txt"))
 
 
-def msls_whiten_apply(params, m, P, dimensions=None):
+def msls_whiten_apply(root_dir, dataset, subset, name, m, P, dimensions=None):
     dimensions = dimensions or [2048, 1024, 512, 256, 128, 64, 32]
-    cities = msls_cities[params.subset]
-    features_dir = "results/" + params.dataset + "/" + params.subset + "/"
+    cities = msls_cities[subset]
+    features_dir = os.path.join("results", dataset, subset)
     if not os.path.exists(features_dir):
         os.makedirs(features_dir)
-    for d in dimensions:
-        result_file = features_dir + params.name + "_retrieved_whiten_" + str(d) + ".csv"
+    for dim in dimensions:
+        result_file = os.path.join(features_dir, f"{name}_retrieved_whiten_{dim}.csv")
         f = open(result_file, "w+")
         f.close()
-    for c in cities:
-        db_file = features_dir + params.name + "_" + c + "_mapfeats.npy"
-        q_file = features_dir + params.name + "_" + c + "_queryfeats.npy"
-        ds_folder = params.subset if params.subset == "test" else "train_val"
-        q_idx_file = params.root_dir + ds_folder + "/" + c + "/query.json"
-        m_idx_file = params.root_dir + ds_folder + "/" + c + "/database.json"
-        m_raw_file = params.root_dir + ds_folder + "/" + c + "/database/raw.csv"
+    for city in cities:
+        db_file = os.path.join(features_dir, f"name_{city}_mapfeats.npy")
+        q_file = os.path.join(features_dir, f"name_{city}_queryfeats.npy")
+        ds_folder = subset if subset == "test" else "train_val"
+        q_idx_file = os.path.join(root_dir, ds_folder, city, "query.json")
+        m_idx_file = os.path.join(root_dir, ds_folder, city, "database.json")
+        m_raw_file = os.path.join(root_dir, ds_folder, city, "database", "raw.csv")
 
-        map_query_whiten_apply(params.dataset, params.name, params.root_dir, params.subset, db_file, q_file, m, P,
-                               map_index_file=m_idx_file, query_index_file=q_idx_file, m_raw_file=m_raw_file,
-                               dimensions=dimensions)
+        map_query_whiten_apply(dataset, name, root_dir, subset, db_file, q_file, m, P,map_index_file=m_idx_file,
+                               query_index_file=q_idx_file, m_raw_file=m_raw_file, dimensions=dimensions)
 
-    if params.subset == "val":
-        for d in tqdm(dimensions):
-            result_file = features_dir + params.name + "_retrieved_whiten_" + str(d) + ".csv"
-            validate(result_file, params.root_dir, result_file.replace("retrieved", "result").replace(".csv", ".txt"))
+    if subset == "val":
+        for dim in tqdm(dimensions):
+            result_file = os.path.join(features_dir, f"{name}_retrieved_whiten_{dim}.csv")
+            validate(result_file, root_dir, result_file.replace("retrieved", "result").replace(".csv", ".txt"))
 
 
 if __name__ == "__main__":
@@ -264,10 +261,11 @@ if __name__ == "__main__":
 
     if params.dataset == "MSLS":
         if params.checkpoint is None:
-            m, P = msls_pca_whiten_learn(params)
-            msls_whiten_apply(params, m, P, dimensions=dimensions)
+            m, P = msls_pca_whiten_learn(params.dataset, params.subset, params.name)
+            msls_whiten_apply(params.root_dir, params.dataset, params.subset, params.name, m, P, dimensions=dimensions)
         else:
-            msls_whiten_apply_from_file(params)
+            msls_whiten_apply_from_file(params.root_dir, params.dataset, params.subset, params.name, params.dim,
+                                        params.checkpoint)
     else:
         if params.checkpoint is None:
             m, P = map_query_pca_whiten_learn(params)

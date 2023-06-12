@@ -52,22 +52,22 @@ def extract_features(dataloader, network, feature_length, features_file):
 def extract_features_msls(subset, root_dir, net, f_length, image_t, save_name, results_dir, batch_size, k, class_token=False):
     cities = default_cities[subset]
 
-    result_file = results_dir + "/" + save_name + "_predictions.txt"
+    result_file = os.path.join(results_dir, f"{save_name}_predictions.txt")
     f = open(result_file, "w+")
     f.close()
 
     subset_dir = subset if subset == "test" else "train_val"
     for city in cities:
         print(city)
-        query_index_file = root_dir + subset_dir + "/" + city + "/query.json"
+        query_index_file = os.path.join(root_dir, subset_dir, city, "query.json")
         query_dataloader = create_dataloader("test", root_dir, query_index_file, None, image_t, batch_size)
-        query_features_file = results_dir + "/" + save_name + "_" + city + "_queryfeats.npy"
+        query_features_file = os.path.join(results_dir, f"{save_name}_{city}_queryfeats.npy")
         if class_token: extract_features(query_dataloader, net, f_length, query_features_file)
         else: extract_features(query_dataloader, net, f_length, query_features_file)
 
-        map_index_file = root_dir + subset_dir + "/" + city + "/database.json"
+        map_index_file = os.path.join(root_dir, subset_dir, city, "database.json")
         map_dataloader = create_dataloader("test", root_dir, map_index_file, None, image_t, batch_size)
-        map_features_file = results_dir + "/" + save_name + "_" + city + "_mapfeats.npy"
+        map_features_file = os.path.join(results_dir, f"{save_name}_{city}_mapfeats.npy")
         if class_token: extract_features(map_dataloader, net, f_length, map_features_file)
         else: extract_features(map_dataloader, net, f_length, map_features_file)
 
@@ -102,14 +102,14 @@ def world_to_camera(pose):
 
 
 def predict_poses_cmu(root_dir, map_features_file, query_features_file):
-    _, reference_poses, _ = load_index(root_dir + "reference.json")
-    test_images, _ = load_index(root_dir + "test.json")
+    _, reference_poses, _ = load_index(os.path.join(root_dir, "reference.json"))
+    test_images, _ = load_index(os.path.join(root_dir, "test.json"))
     _, best_score = search(map_features_file, query_features_file, 1)
 
     name = "ExtendedCMU" if "extended" in map_features_file else "CMU"
     name = map_features_file \
         .replace("_mapfeats", "_toeval") \
-        .replace("/MSLS_", "/" + name + "_eval_MSLS_") \
+        .replace("/MSLS_", f"/{name}_eval_MSLS_") \
         .replace(".npy", ".txt")
 
     with open(name, "w") as f:
@@ -117,13 +117,13 @@ def predict_poses_cmu(root_dir, map_features_file, query_features_file):
             cut_place = q.find("/img")
             query_image_to_submit = q[cut_place + 1:]
             pose = np.array((reference_poses[db_index])).flatten()
-            submission = query_image_to_submit + " " + " ".join(pose.astype(str)) + "\n"
+            submission = f"{query_image_to_submit} {' '.join(pose.astype(str))}\n"
             f.write(submission)
 
 
 def predict_poses(root_dir, map_features_file, query_features_file):
-    _, reference_poses, _ = load_index(root_dir + "reference.json")
-    test_images, _ = load_index(root_dir + "test.json")
+    _, reference_poses, _ = load_index(os.path.join(root_dir, "reference.json"))
+    test_images, _ = load_index(os.path.join(root_dir, "test.json"))
     _, best_score = search(map_features_file, query_features_file, 1)
 
     name = map_features_file \
@@ -137,17 +137,17 @@ def predict_poses(root_dir, map_features_file, query_features_file):
             query_image_to_submit = query_image[cut_place + 1:]
             assert query_image_to_submit.startswith("rear/")
             pose = np.array(world_to_camera(reference_poses[database_index].flatten()))
-            submission = query_image_to_submit + " " + " ".join(pose.astype(str)) + "\n"
+            submission = f"{query_image_to_submit} {' '.join(pose.astype(str))}\n"
             file.write(submission)
 
 
 def eval_pitts(root_dir, dataset, result_file):
     if "pitts" in dataset:
-        gt_file = root_dir + dataset + "_test_gt.h5"
+        gt_file = os.path.join(root_dir, f"{dataset}_test_gt.h5")
     elif dataset.lower() == "tokyotm":
-        gt_file = root_dir + "val_gt.h5"
+        gt_file = os.path.join(root_dir, "val_gt.h5")
     else:
-        gt_file = root_dir + "gt.h5"
+        gt_file = os.path.join(root_dir, "gt.h5")
     results_index = np.load(result_file)
     score_file = result_file.replace("predictions.npy", "scores.txt")
     print(results_index.shape)
@@ -165,19 +165,19 @@ def eval_pitts(root_dir, dataset, result_file):
                         database_index = sorted(ret[:k])
                         hits += np.any(gt[query_index, database_index])
                 print(k, np.round(hits / total * 100, 2))
-                sf.write(str(k) + "," + str(np.round(hits / total * 100, 2)) + "\n")
+                sf.write(f"{k},{(np.round(hits / total * 100, 2))}\n")
 
 
 def extract_features_map_query(root_dir, query_index_file, map_index_file, network, feature_length, save_name, results_dir, batch_size, k, dataset):
     query_dataloader = create_dataloader("test", root_dir, query_index_file, None, transformer, batch_size)
-    query_features_file = results_dir + "/" + save_name + "_queryfeats.npy"
+    query_features_file = os.path.join(results_dir, f"{save_name}_queryfeats.npy")
     extract_features(query_dataloader, network, feature_length, query_features_file)
 
     map_dataloader = create_dataloader("test", root_dir, map_index_file, None, transformer, batch_size)
-    map_features_file = results_dir + "/" + save_name + "_mapfeats.npy"
+    map_features_file = os.path.join(results_dir, f"{save_name}_mapfeats.npy")
     extract_features(map_dataloader, network, feature_length, map_features_file)
 
-    result_file = results_dir + "/" + save_name + "_predictions.npy"
+    result_file = os.path.join(results_dir, f"{save_name}_predictions.npy")
 
     if dataset.lower() == "tokyotm":
         extract_top_k_tokyotm(map_features_file, query_features_file, map_index_file, query_index_file, result_file, k)
@@ -230,7 +230,8 @@ def extract_msls_top_k(map_feats_file, query_feats_file, database_index_file, qu
     with open(result_file, "a+") as file:
         for i, query in enumerate(q_paths):
             query_id = query.split("/")[-1].split(".")[0]
-            file.write(query_id + " " + " ".join([db_paths[j].split("/")[-1].split(".")[0] for j in I[i, :]]) + "\n")
+            db_paths_str = ' '.join([db_paths[j].split('/')[-1].split('.')[0] for j in I[i, :]])
+            file.write(f"{query_id} {db_paths_str}\n")
     return result_file
 
 
@@ -238,8 +239,7 @@ def search(map_feats_file, query_feats_file, k=25):
     # load features
     query_features = np.load(query_feats_file).astype('float32')
     map_features = np.load(map_feats_file).astype('float32')
-    if k is None:
-        k = map_features.shape[0]
+    k = k or map_features.shape[0]
     # build index and add map features
     index = faiss.IndexFlatL2(map_features.shape[1])
     index.add(map_features)
@@ -289,7 +289,7 @@ if __name__ == "__main__":
     transformer = image_transformer(image_size)
     feature_length = int(params.f_length)
 
-    results_dir = "results/" + params.dataset + "/" + params.subset + "/"
+    results_dir = os.path.join("results", params.dataset, params.subset)
     if not os.path.exists(results_dir):
         os.makedirs(results_dir)
 

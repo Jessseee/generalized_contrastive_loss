@@ -120,7 +120,7 @@ class MSLSDataSet(Dataset):
 
     def load_cities(self):
         for city in self.cities:
-            gt_file = self.root_dir + "train_val/" + city + "_gt.h5"
+            gt_file = os.path.join(self.root_dir, "train_val", f"{city}_gt.h5")
             with h5py.File(gt_file, "r") as f:
                 gt = f["fov"]
                 self.city_starting_idx[self.total] = city
@@ -131,11 +131,11 @@ class MSLSDataSet(Dataset):
         db_total = 0
         db_city_starting_idx = {}
 
-        for c in self.cities:
-            gt_file = self.root_dir + "train_val/" + c + "_gt.h5"
+        for city in self.cities:
+            gt_file = os.path.join(self.root_dir, "train_val", f"{city}_gt.h5")
             with h5py.File(gt_file, "r") as f:
                 gt = f["fov"]
-                db_city_starting_idx[db_total] = c
+                db_city_starting_idx[db_total] = city
                 db_total += gt.shape[1]
         print(db_city_starting_idx)
 
@@ -144,27 +144,27 @@ class MSLSDataSet(Dataset):
         db_idcs = sorted(torch.randperm(db_total, dtype=torch.int)[:int(n_images)])
 
         # Get those images
-        st, c, next_st = self.find_city(db_idcs[0], db_city_starting_idx, db_total)
-        map_file = self.root_dir + "train_val/" + c + "/database.json"
+        st, city, next_st = self.find_city(db_idcs[0], db_city_starting_idx, db_total)
+        map_file = os.path.join(self.root_dir, "train_val", city, "database.json")
         images = BaseDataSet.load_idx(map_file)
         if "_toy" in self.root_dir:
-            panorama = np.genfromtxt(self.root_dir + "train_val/" + c + "/database/raw_train.csv", dtype=bool,
-                                     skip_header=1, delimiter=",")[:, -1]
+            panorama = np.genfromtxt(os.path.join(self.root_dir, "train_val", city, "database", "raw_train.csv"),
+                                     dtype=bool, skip_header=1, delimiter=",")[:, -1]
         else:
-            panorama = np.genfromtxt(self.root_dir + "train_val/" + c + "/database/raw.csv", dtype=bool, skip_header=1,
-                                     delimiter=",")[:, -1]
+            panorama = np.genfromtxt(os.path.join(self.root_dir, "train_val", city, "database", "raw.csv"),
+                                     dtype=bool, skip_header=1, delimiter=",")[:, -1]
         cluster_ims = []
         for idx in tqdm(db_idcs, desc="loading clustering cache"):
             if idx >= next_st:
-                st, c, next_st = self.find_city(idx, db_city_starting_idx, db_total)
-                map_file = self.root_dir + "train_val/" + c + "/database.json"
+                st, city, next_st = self.find_city(idx, db_city_starting_idx, db_total)
+                map_file = os.path.join(self.root_dir, "train_val", city, "database.json")
                 images = BaseDataSet.load_idx(map_file)
                 if "_toy" in self.root_dir:
-                    panorama = np.genfromtxt(self.root_dir + "train_val/" + c + "/database/raw_train.csv", dtype=bool,
-                                             skip_header=1, delimiter=",")[:, -1]
+                    panorama = np.genfromtxt(os.path.join(self.root_dir, "train_val", city, "database", "raw_train.csv"),
+                                             dtype=bool, skip_header=1, delimiter=",")[:, -1]
                 else:
-                    panorama = np.genfromtxt(self.root_dir + "train_val/" + c + "/database/raw.csv", dtype=bool,
-                                             skip_header=1, delimiter=",")[:, -1]
+                    panorama = np.genfromtxt(os.path.join(self.root_dir, "train_val", city, "database", "raw.csv"),
+                                             dtype=bool, skip_header=1, delimiter=",")[:, -1]
             city_qidx = idx - st
 
             # if we get a panorama we choose another image from the same city
@@ -177,15 +177,14 @@ class MSLSDataSet(Dataset):
         self.d2n_idcs = []
         self.n2d_idcs = []
 
-        for c in self.cities:
-            n2d, d2n = (self.load_daynight(self.root_dir + "train_val/" + c + "/query/subtask_index.csv"))
+        for city in self.cities:
+            n2d, d2n = self.load_daynight(os.path.join(self.root_dir, "train_val", city, "query", "subtask_index.csv"))
             self.d2n_idcs.extend(d2n)
             self.n2d_idcs.extend(n2d)
         self.d2n_idcs = np.where(self.d2n_idcs)[0]
         self.n2d_idcs = np.where(self.n2d_idcs)[0]
 
     def load_pairs_daynight(self):
-        # if self.start==0:
         all_idcs = torch.randperm(self.total, dtype=torch.int)
         self.idcs = np.hstack((self.n2d_idcs, np.random.choice(self.d2n_idcs, len(self.n2d_idcs) // 2),
                                all_idcs[:len(self.n2d_idcs) // 2]))
@@ -198,37 +197,37 @@ class MSLSDataSet(Dataset):
 
         # we get the next chunk and sort it (so that we can go by city)
         cached_idcs = sorted(self.idcs)
-        st, c, next_st = self.find_city(cached_idcs[0], self.city_starting_idx, self.total)
-        query_file = self.root_dir + "train_val/" + c + "/query.json"
-        map_file = self.root_dir + "train_val/" + c + "/database.json"
-        gt_file = self.root_dir + "train_val/" + c + "_gt.h5"
-        map_daynight, _ = self.load_daynight(self.root_dir + "train_val/" + c + "/database/subtask_index.csv")
+        st, city, next_st = self.find_city(cached_idcs[0], self.city_starting_idx, self.total)
+        query_file = os.path.join(self.root_dir, "train_val", city, "query.json")
+        map_file = os.path.join(self.root_dir, "train_val", city, "database.json")
+        gt_file = os.path.join(self.root_dir, "train_val", f"{city}_gt.h5")
+        map_daynight, _ = self.load_daynight(os.path.join(self.root_dir, "train_val", city, "database", "subtask_index.csv"))
         f = h5py.File(gt_file, "r")
         query_images = BaseDataSet.load_idx(query_file)
         map_images = BaseDataSet.load_idx(map_file)
-        map_panorama = np.genfromtxt(self.root_dir + "train_val/" + c + "/database/raw.csv", dtype=bool, skip_header=1,
-                                     delimiter=",")[:, -1]
-        query_panorama = np.genfromtxt(self.root_dir + "train_val/" + c + "/query/raw.csv", dtype=bool, skip_header=1,
-                                       delimiter=",")[:, -1]
+        map_panorama = np.genfromtxt(os.path.join(self.root_dir, "train_val", city, "database", "raw.csv"),
+                                     dtype=bool, skip_header=1, delimiter=",")[:, -1]
+        query_panorama = np.genfromtxt(os.path.join(self.root_dir, "train_val", city, "query", "raw.csv"),
+                                       dtype=bool, skip_header=1, delimiter=",")[:, -1]
         total_daynights = 0
         for idx in tqdm(cached_idcs, desc="loading cache"):
             query_is_night = 1 if idx in self.n2d_idcs else 0
 
             if idx >= next_st:
                 f.close()
-                st, c, next_st = self.find_city(idx, self.city_starting_idx, self.total)
-                gt_file = self.root_dir + "train_val/" + c + "_gt.h5"
-                map_daynight, _ = self.load_daynight(self.root_dir + "train_val/" + c + "/database/subtask_index.csv")
+                st, city, next_st = self.find_city(idx, self.city_starting_idx, self.total)
+                gt_file = os.path.join(self.root_dir, "train_val", f"{city}_gt.h5")
+                map_daynight, _ = self.load_daynight(os.path.join(self.root_dir, "train_val", city, "database", "subtask_index.csv"))
 
                 f = h5py.File(gt_file, "r")
-                query_file = self.root_dir + "train_val/" + c + "/query.json"
-                map_file = self.root_dir + "train_val/" + c + "/database.json"
+                query_file = os.path.join(self.root_dir, "train_val", city, "query.json")
+                map_file = os.path.join(self.root_dir, "train_val", city, "database.json")
                 query_images = BaseDataSet.load_idx(query_file)
                 map_images = BaseDataSet.load_idx(map_file)
-                map_panorama = np.genfromtxt(self.root_dir + "train_val/" + c + "/database/raw.csv", dtype=bool,
-                                             skip_header=1, delimiter=",")[:, -1]
-                query_panorama = np.genfromtxt(self.root_dir + "train_val/" + c + "/query/raw.csv", dtype=bool,
-                                               skip_header=1, delimiter=",")[:, -1]
+                map_panorama = np.genfromtxt(os.path.join(self.root_dir, "train_val", city, "database", "raw.csv"),
+                                             dtype=bool, skip_header=1, delimiter=",")[:, -1]
+                query_panorama = np.genfromtxt(os.path.join(self.root_dir, "train_val", city, "query", "raw.csv"),
+                                               dtype=bool, skip_header=1, delimiter=",")[:, -1]
 
             city_query_index = idx - st
             if not query_panorama[city_query_index]:  # we skip panoramas
@@ -321,45 +320,45 @@ class MSLSDataSet(Dataset):
 
         # We get the next chunk and sort it (so that we can go by city)
         cached_idcs = sorted(self.idcs[self.start:self.start + self.cache_size])
-        st, c, next_st = self.find_city(cached_idcs[0], self.city_starting_idx, self.total)
-        query_file = self.root_dir + "train_val/" + c + "/query.json"
-        map_file = self.root_dir + "train_val/" + c + "/database.json"
-        gt_file = self.root_dir + "train_val/" + c + "_gt.h5"
+        st, city, next_st = self.find_city(cached_idcs[0], self.city_starting_idx, self.total)
+        query_file = os.path.join(self.root_dir, "train_val", city, "query.json")
+        map_file = os.path.join(self.root_dir, "train_val", city, "database.json")
+        gt_file = os.path.join(self.root_dir, "train_val", f"{city}_gt.h5")
 
         f = h5py.File(gt_file, "r")
         query_image = BaseDataSet.load_idx(query_file)
         map_image = BaseDataSet.load_idx(map_file)
         if "_toy" in self.root_dir:
-            map_panorama = np.genfromtxt(self.root_dir + "train_val/" + c + "/database/raw_train.csv", dtype=bool,
-                                         skip_header=1, delimiter=",")[:, -1]
-            query_panorama = np.genfromtxt(self.root_dir + "train_val/" + c + "/query/raw_train.csv", dtype=bool,
-                                           skip_header=1, delimiter=",")[:, -1]
+            map_panorama = np.genfromtxt(os.path.join(self.root_dir, "train_val", city, "database", "raw_train.csv"),
+                                         dtype=bool, skip_header=1, delimiter=",")[:, -1]
+            query_panorama = np.genfromtxt(os.path.join(self.root_dir, "train_val", city, "query", "raw_train.csv"),
+                                           dtype=bool, skip_header=1, delimiter=",")[:, -1]
         else:
-            map_panorama = np.genfromtxt(self.root_dir + "train_val/" + c + "/database/raw.csv", dtype=bool,
-                                         skip_header=1, delimiter=",")[:, -1]
-            query_panorama = np.genfromtxt(self.root_dir + "train_val/" + c + "/query/raw.csv", dtype=bool,
-                                           skip_header=1, delimiter=",")[:, -1]
+            map_panorama = np.genfromtxt(os.path.join(self.root_dir, "train_val", city, "database", "raw.csv"),
+                                         dtype=bool, skip_header=1, delimiter=",")[:, -1]
+            query_panorama = np.genfromtxt(os.path.join(self.root_dir, "train_val", city, "query", "raw.csv"),
+                                           dtype=bool, skip_header=1, delimiter=",")[:, -1]
 
         for idx in tqdm(cached_idcs, desc="loading cache"):
             if idx >= next_st:
                 f.close()
-                st, c, next_st = self.find_city(idx, self.city_starting_idx, self.total)
-                gt_file = self.root_dir + "train_val/" + c + "_gt.h5"
+                st, city, next_st = self.find_city(idx, self.city_starting_idx, self.total)
+                gt_file = os.path.join(self.root_dir, "train_val", f"{city}_gt.h5")
 
                 f = h5py.File(gt_file, "r")
-                query_file = self.root_dir + "train_val/" + c + "/query.json"
-                map_file = self.root_dir + "train_val/" + c + "/database.json"
+                query_file = os.path.join(self.root_dir, "train_val", city, "query.json")
+                map_file = os.path.join(self.root_dir, "train_val", city, "database.json")
                 query_image = BaseDataSet.load_idx(query_file)
                 map_image = BaseDataSet.load_idx(map_file)
                 if "_toy" in self.root_dir:
-                    map_panorama = np.genfromtxt(self.root_dir + "train_val/" + c + "/database/raw_train.csv",
+                    map_panorama = np.genfromtxt(os.path.join(self.root_dir, "train_val", city, "database", "raw_train.csv"),
                                                  dtype=bool, skip_header=1, delimiter=",")[:, -1]
-                    query_panorama = np.genfromtxt(self.root_dir + "train_val/" + c + "/query/raw_train.csv",
+                    query_panorama = np.genfromtxt(os.path.join(self.root_dir, "train_val", city, "query", "raw_train.csv"),
                                                    dtype=bool, skip_header=1, delimiter=",")[:, -1]
                 else:
-                    map_panorama = np.genfromtxt(self.root_dir + "train_val/" + c + "/database/raw.csv",
+                    map_panorama = np.genfromtxt(os.path.join(self.root_dir, "train_val", city, "database", "raw.csv"),
                                                  dtype=bool, skip_header=1, delimiter=",")[:, -1]
-                    query_panorama = np.genfromtxt(self.root_dir + "train_val/" + c + "/query/raw.csv",
+                    query_panorama = np.genfromtxt(os.path.join(self.root_dir, "train_val", city, "query", "raw.csv"),
                                                    dtype=bool, skip_header=1, delimiter=",")[:, -1]
             city_query_index = idx - st
             if not query_panorama[city_query_index]:  # we skip panoramas
