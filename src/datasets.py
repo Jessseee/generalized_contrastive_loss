@@ -155,6 +155,7 @@ class MSLSDataSet(Dataset):
                                      dtype=bool, skip_header=1, delimiter=",")[:, -1]
         cluster_ims = []
         for idx in tqdm(db_idcs, desc="loading clustering cache"):
+            city_qidx = idx - st
             if idx >= next_st:
                 st, city, next_st = self.find_city(idx, db_city_starting_idx, db_total)
                 map_file = os.path.join(self.root_dir, "train_val", city, "database.json")
@@ -213,6 +214,7 @@ class MSLSDataSet(Dataset):
         for idx in tqdm(cached_idcs, desc="loading cache"):
             query_is_night = 1 if idx in self.n2d_idcs else 0
 
+            city_qidx = idx - st
             if idx >= next_st:
                 f.close()
                 st, city, next_st = self.find_city(idx, self.city_starting_idx, self.total)
@@ -340,6 +342,7 @@ class MSLSDataSet(Dataset):
                                            dtype=bool, skip_header=1, delimiter=",")[:, -1]
 
         for idx in tqdm(cached_idcs, desc="loading cache"):
+            city_qidx = idx - st
             if idx >= next_st:
                 f.close()
                 st, city, next_st = self.find_city(idx, self.city_starting_idx, self.total)
@@ -360,6 +363,7 @@ class MSLSDataSet(Dataset):
                                                  dtype=bool, skip_header=1, delimiter=",")[:, -1]
                     query_panorama = np.genfromtxt(os.path.join(self.root_dir, "train_val", city, "query", "raw.csv"),
                                                    dtype=bool, skip_header=1, delimiter=",")[:, -1]
+
             city_query_index = idx - st
             if not query_panorama[city_query_index]:  # we skip panoramas
                 query_fovs = torch.Tensor(f[self.ds_key][city_query_index, :])
